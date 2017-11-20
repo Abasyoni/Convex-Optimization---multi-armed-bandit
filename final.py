@@ -75,7 +75,7 @@ def processData():
 
 def calc_objective(w, data, label):
     result = (label.T - w.dot(data.T))
-    result = 0.5*result.dot(result.T)
+    result = 0.5*result.dot(result)
     return result
 
 def calc_grad(w, data, label):
@@ -109,3 +109,4 @@ def grad_desc(W, data, label):
 
 
 main()
+
