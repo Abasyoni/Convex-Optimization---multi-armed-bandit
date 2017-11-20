@@ -7,6 +7,8 @@ from sklearn.utils import shuffle
 
 
 EPSILON = 0.00001
+BETA = 0.9
+reduced_dim = 100
 
 class Results(object):
     def __init__(self, objective, time):
@@ -24,6 +26,7 @@ def main():
     (data, label) = processData()
     Length = (label.shape[0]) # 8816
     Features = (data.shape[1]) ## 785
+    print Length, Features
 
 
     #initialize weights
@@ -32,11 +35,12 @@ def main():
 
     # Call individual descent algo - make a note of the obj func, accuracy, time taken
     grad_results = grad_desc(init_w, data, label)
-    #coord_results = coord_desc(init_w, data, label)
-    #plt.plot(grad_results.objective)
-    print("hi")
-    print(grad_results.objective)
-    #plt.show()
+    coord_results = coord_desc(init_w, data, label)
+    plt.plot(grad_results.objective)
+    #plt.plot([1,2,3,4,5,6])
+    #print("hi")
+    #print(grad_results.objective)
+    plt.show()
 
 
 
@@ -68,6 +72,12 @@ def processData():
 
     mean = np.mean(data)
     data = data - mean
+
+    cov = np.dot(data.T, data) / data.shape[0]
+
+    U, S, V = np.linalg.svd(cov)
+
+    data = np.dot(data, U[:,:reduced_dim])
     
     data = np.append(data, np.ones([data.shape[0],1]), axis = 1)
     
@@ -75,14 +85,23 @@ def processData():
 
 def calc_objective(w, data, label):
     result = (label.T - w.dot(data.T))
-    result = 0.5*result.dot(result)
+    result = 0.5*result.dot(result.T)
     return result
 
 def calc_grad(w, data, label):
     return -(label.T - w.dot(data.T)).dot(data)
 
 def grad_step(w, data, label):
-    step = 0.000001
+    step = 1
+    current_objective = calc_objective(w, data, label)
+    current_grad = calc_grad(w, data, label)
+    quadratic_reduction = current_grad.dot(current_grad.T)/2
+    while (True):
+        temp_w = w - step*calc_grad(w, data, label)
+        if (calc_objective(temp_w, data, label) < current_objective - quadratic_reduction*step):
+            break
+        step = step*BETA
+
     return w - step*calc_grad(w, data, label)
 
 def grad_desc(W, data, label):
@@ -92,20 +111,26 @@ def grad_desc(W, data, label):
 
     cur_time = time.time()
     objective = calc_objective(w, data, label)
+    print "objective is: %d" % objective
+    w = grad_step(w, data, label)
+    objective = calc_objective(w, data, label)
+    print "objective is: %d" % objective
+
     objectives += [objective]
     while (True):
         w = grad_step(w, data, label)
         new_objective = calc_objective(w, data, label)
-        print new_objective - objective
+        #print new_objective - objective
         if (objective-new_objective < EPSILON):
-            print("brekaing quickly")
+            print("brekaing")
             break
         objective = new_objective
-        print("one more")
+        #print(objective)
         objectives += [objective]
     cur_time = time.time() - cur_time
 
     return Results(objectives, cur_time)
+
 
 
 main()
