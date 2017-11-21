@@ -4,11 +4,14 @@ import time
 import skimage.measure
 import matplotlib.pyplot as plt
 from sklearn.utils import shuffle
+import numpy.linalg
+from numpy.linalg import inv
 
 
-EPSILON = 0.00001
+EPSILON = 0.1
 BETA = 0.9
 reduced_dim = 100
+data_squared = None
 
 class Results(object):
     def __init__(self, objective, time):
@@ -26,17 +29,23 @@ def main():
     (data, label) = processData()
     Length = (label.shape[0]) # 8816
     Features = (data.shape[1]) ## 785
-    print Length, Features
 
 
     #initialize weights
     init_w = np.random.rand(1,Features)*1e-3
-
+    temp_init_w = np.ones_like(init_w, dtype = np.float64)
+    init_w = init_w*temp_init_w
 
     # Call individual descent algo - make a note of the obj func, accuracy, time taken
-    grad_results = grad_desc(init_w, data, label)
-    coord_results = coord_desc(init_w, data, label)
-    plt.plot(grad_results.objective)
+    grad_results = algo(init_w, data, label, grad_step)
+    coord_results = algo(init_w, data, label, coord_grad_step)
+    newton_results = algo(init_w, data, label, newton_step)
+    UCB_results = UCB1(init_w, data, label, [grad_step, coord_grad_step, newton_step])
+
+    print UCB_results.objective
+    plt.plot(UCB_results.objective, 'r',grad_results.objective, 'b',coord_results.objective,'g', newton_results.objective, 'm')
+    plt.title('Objective values')
+    #plt.plot(newton_results.objective)
     #plt.plot([1,2,3,4,5,6])
     #print("hi")
     #print(grad_results.objective)
@@ -50,6 +59,7 @@ def main():
     # Report Algo used/epoch, net time taken, obj value achieved, net accuracy
 
 def processData():
+    global data_squared
     # first, parse the data
     # /home/oyku/Desktop/Oyku/Convex 10-725/
     mnist = pd.read_csv('train_mnist.csv')
@@ -80,13 +90,16 @@ def processData():
     data = np.dot(data, U[:,:reduced_dim])
     
     data = np.append(data, np.ones([data.shape[0],1]), axis = 1)
+
+
+    data_squared = np.sum(data**2, axis = 0)
     
     return (data, label)
 
 def calc_objective(w, data, label):
     result = (label.T - w.dot(data.T))
     result = 0.5*result.dot(result.T)
-    return result
+    return result[0,0]
 
 def calc_grad(w, data, label):
     return -(label.T - w.dot(data.T)).dot(data)
@@ -104,33 +117,142 @@ def grad_step(w, data, label):
 
     return w - step*calc_grad(w, data, label)
 
-def grad_desc(W, data, label):
+def calc_grad_i(w, data, label, i):
+    return -(label.T - w.dot(data.T)).dot(data[:,i])[0]
+
+def update_w_i(W, data, label, i):
+    w = W[:,:]
+    step = 1e-10
+    current_objective = calc_objective(w, data, label)
+    current_grad = calc_grad_i(w, data, label, i)
+    return w[:,i] - step*calc_grad_i(w, data, label, i)
+
+"""
+def update_w_i(W, data, label, i):
+    global BETA
+    w = W[:,:]
+    step = 1
+    current_objective = calc_objective(w, data, label)
+    current_grad = calc_grad_i(w, data, label, i)
+    quadratic_reduction = current_grad*(current_grad)/2
+    temp_w = np.ones_like(w)*w
+    while (True):
+        temp_w[:,i] = w[:,i] - step*current_grad
+        new_objective = calc_objective(temp_w, data, label)
+        if (new_objective < current_objective - quadratic_reduction*step):
+            break
+        step = step*BETA
+
+    return w[:,i] - step*calc_grad_i(w, data, label, i)
+"""
+
+"""
+def update_w_i(W, Data, label, i):
+    global data_squared
+    mask = np.ones(W.shape[1], dtype = bool)
+    mask[i] = False
+    w = W[:,:]
+    w_j = w[:,mask]
+    data = Data[:,:]
+    data_j = data[:,mask]
+    temp = ((label.T - w_j.dot(data_j.T)).dot(data[:,i]))
+    return temp[0]/(data_squared[i])
+"""
+
+def coord_grad_step(W, data, label):
+    w = W[:,:]
+    for i in xrange(w.shape[1]):
+        w[:,i] = update_w_i(w, data, label, i)
+    return w
+
+def inv_newt_hess(data):
+    return inv(data.T.dot(data))
+
+def newton_step(W, data, label):
+    w = W[:,:]
+    l = 0.1
+    step = inv_newt_hess(data)
+    grad = calc_grad(w, data, label)
+    return w - l*grad.dot(step)
+
+def algo(W, data, label, update_rule):
     w = W[:,:]
 
     objectives = []
 
     cur_time = time.time()
     objective = calc_objective(w, data, label)
-    print "objective is: %d" % objective
-    w = grad_step(w, data, label)
-    objective = calc_objective(w, data, label)
-    print "objective is: %d" % objective
 
     objectives += [objective]
     while (True):
-        w = grad_step(w, data, label)
+        w = update_rule(w, data, label)
         new_objective = calc_objective(w, data, label)
-        #print new_objective - objective
         if (objective-new_objective < EPSILON):
             print("brekaing")
             break
         objective = new_objective
-        #print(objective)
         objectives += [objective]
     cur_time = time.time() - cur_time
 
     return Results(objectives, cur_time)
 
+
+def UCB1(W, data, label, update_rules):
+    w = W[:,:]
+
+    objectives = []
+
+    cur_time = time.time()
+    objective = calc_objective(w, data, label)
+    LARGE = objective
+
+    N = [0 for i in xrange(len(update_rules))]
+    Rewards = [0 for i in xrange(len(update_rules))]
+
+    objectives += [objective]
+    # first, run every algorithm once
+    k = 0
+    i = 0
+    for update_rule in update_rules:
+        op_time = time.time()
+        w = update_rule(w, data, label)
+        op_time = (time.time() - op_time)*10000
+        k += 1
+        new_objective = calc_objective(w, data, label)
+        objective = new_objective
+        objectives += [objective]
+        reward = ((objective-new_objective)/(1.0*LARGE))**(1.0/k)
+        reward = reward/(1.0*op_time)
+        N[i] += 1
+        Rewards[i] = (Rewards[i]*(N[i]-1) + reward)/N[i]
+        i += 1
+    chosen_arm = []
+    while (True):
+        UCB = [Rewards[j] + np.sqrt(np.log(2*k/N[j])) for j in xrange(len(update_rules))]
+        j = np.argmax(UCB)
+        #print j
+        chosen_arm += [j]
+        op_time = time.time()
+        update_rule = update_rules[j]
+        w = update_rule(w, data, label)
+        op_time = (time.time() - op_time)*10
+        new_objective = calc_objective(w, data, label)
+        if (objective - new_objective < EPSILON):
+            print("brekaing")
+            #plt.plot(chosen_arm)
+            #plt.show()
+            break
+        reward = ((objective-new_objective)/(1.0*LARGE))**(1.0/k)
+        objective = new_objective
+        objectives += [objective]
+        reward = reward/(1.0*op_time)
+        k += 1
+        N[j] += 1
+        Rewards[j] = (Rewards[j]*(N[j]-1) + reward)/N[j]    
+
+    cur_time = time.time() - cur_time
+
+    return Results(objectives, cur_time)
 
 
 main()
