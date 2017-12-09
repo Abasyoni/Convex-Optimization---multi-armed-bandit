@@ -9,8 +9,9 @@ from numpy.linalg import inv
 import pylab
 
 OPTIMAL = 38.4854465414
-EPSILON = 1e-6
+EPSILON = 1e-3
 BETA = 0.9
+SCALE_TIME = 200 #120
 reduced_dim = 100
 data_squared = None
 
@@ -37,24 +38,31 @@ def main():
     temp_init_w = np.ones_like(init_w, dtype = np.float64)
     init_w = init_w*temp_init_w
     
+
+    init_w_gd = init_w * np.ones_like(init_w)
+    init_w_n = init_w * np.ones_like(init_w)
+    init_w_cd = init_w * np.ones_like(init_w)
+    init_w_ucb1 = init_w * np.ones_like(init_w)
     # Call individual descent algo - make a note of the obj func, accuracy, time taken
-    grad_results = algo(init_w, data, label, grad_step)
+    
     print('Gradient Descent:')
+    grad_results = algo(init_w_gd, data, label, grad_step)
     print(grad_results.time)
-    newton_results = algo(init_w, data, label, newton_step)
+
     print('Newton Method:')
+    newton_results = algo(init_w_n, data, label, newton_step)
     print(newton_results.time)
     print (newton_results.objective[-1])
     
-    UCB_results = UCB1(init_w, data, label, [grad_step, coord_grad_step, newton_step])
-    print('MAB with UCB:')
-    print(UCB_results.time)
-    print (UCB_results.objective)
-    
-    coord_results = algo(init_w, data, label, coord_grad_step)
     print('Coordinate Descent:')
+    coord_results = algo(init_w_cd, data, label, coord_grad_step)
     print(coord_results.time)
     print(coord_results.objective[-1])
+    
+    print('MAB with UCB:')
+    UCB_results = UCB1(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step])
+    print(UCB_results.time)
+    #print (UCB_results.objective)
     
     
     pylab.plot(UCB_results.objective, '--k', label='MAB combined')
@@ -66,7 +74,11 @@ def main():
     pylab.ylabel('Squared Error Loss')
     pylab.legend()
     plt.show()
-  
+    
+    print "gd: ",np.sum((np.asarray(chosen_arm) == 0) + 0)
+    print "cd: ",np.sum((np.asarray(chosen_arm) == 1) + 0)
+    print "nm: ",np.sum((np.asarray(chosen_arm) == 2) + 0)
+
     nn = np.arange(np.asarray(chosen_arm).shape[0])
     pylab.scatter(nn,chosen_arm)
     yy = np.array([0,1,2])
@@ -150,6 +162,8 @@ def update_w_i(W, data, label, i):
     current_grad = calc_grad_i(w, data, label, i)
     return w[:,i] - step*calc_grad_i(w, data, label, i)
 
+
+
 """
 def update_w_i(W, data, label, i):
     global BETA
@@ -192,7 +206,7 @@ def inv_newt_hess(data):
 
 def newton_step(W, data, label):
     w = W[:,:]
-    l = 0.1
+    l = 0.001
     step = inv_newt_hess(data)
     grad = calc_grad(w, data, label)
     return w - l*grad.dot(step)
@@ -208,13 +222,13 @@ def algo(W, data, label, update_rule):
     while (True):
         w = update_rule(w, data, label)
         new_objective = calc_objective(w, data, label)
-        if (objective-new_objective < EPSILON):
-        #if (new_objective - OPTIMAL < EPSILON):
+        #if (objective-new_objective < EPSILON):
+        if (new_objective - OPTIMAL < EPSILON):
             print("breaking")
             break
         objective = new_objective
         objectives += [objective]
-    cur_time = time.time() - cur_time
+    cur_time = (time.time() - cur_time)*SCALE_TIME
 
     return Results(objectives, cur_time)
 
@@ -240,7 +254,7 @@ def UCB1(W, data, label, update_rules):
     for update_rule in update_rules:
         op_time = time.time()
         w = update_rule(w, data, label)
-        op_time = (time.time() - op_time)*100
+        op_time = (time.time() - op_time)*SCALE_TIME
         k += 1
         chosen_arm += [i]
         new_objective = calc_objective(w, data, label)
@@ -254,16 +268,19 @@ def UCB1(W, data, label, update_rules):
     UCB = [Rewards[j] + np.sqrt(2*np.log(k)/N[j]) for j in range(len(update_rules))]
     
     while (True):
-        # UCB = [Rewards[j] + np.sqrt(np.log(2*k/N[j])) for j in range(len(update_rules))]
         j = np.argmax(np.asarray(UCB))
+        print "UCB values: ", UCB
+        print "Reward val: ", Rewards
+        print "Chosen arm: ", j
+        print 
         chosen_arm += [j]
         op_time = time.time()
         update_rule = update_rules[j]
         w = update_rule(w, data, label)
-        op_time = (time.time() - op_time)*100
+        op_time = (time.time() - op_time)*SCALE_TIME
         new_objective = calc_objective(w, data, label)
-        #if (new_objective - OPTIMAL < OPTIMAL):
-        if (objective - new_objective < EPSILON):
+        if (new_objective - OPTIMAL < OPTIMAL):
+        #if (objective - new_objective < EPSILON):
             print("breaking in ucb ", j)
             break
         reward = ((objective-new_objective)/(1.0*LARGE))**(1.0/k)
@@ -272,7 +289,8 @@ def UCB1(W, data, label, update_rules):
         reward = reward/(1.0*op_time)
         k += 1
         N[j] += 1
-        Rewards[j] = (Rewards[j]*(N[j]-1) + reward)/N[j]    
+        Rewards[j] = (Rewards[j]*(N[j]-1) + reward)/N[j]
+        #UCB = [Rewards[j] + np.sqrt(2*np.log(k/N[j])) for j in range(len(update_rules))]  
         UCB[j] = Rewards[j] + np.sqrt(2*np.log(k)/N[j])
     cur_time = time.time() - cur_time
 
