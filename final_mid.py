@@ -19,8 +19,6 @@ class Results(object):
         self.objective = objective
         self.time = time
         self.iter = len(objective)
-
-
 ## this function runs coordinate, gradient, and multi-armed bandit on coordinate, gradient, 
 ## and plots the results to compare perfomances
 def main():
@@ -149,7 +147,7 @@ def calc_grad_i(w, data, label, i):
 
 def update_w_i(W, data, label, i):
     w = W[:,:]
-    step = 1e-7
+    step = 1e-6
     current_objective = calc_objective(w, data, label)
     current_grad = calc_grad_i(w, data, label, i)
     return w[:,i] - step*calc_grad_i(w, data, label, i)
