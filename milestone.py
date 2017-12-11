@@ -279,7 +279,7 @@ def UCB1(W, data, label, update_rules):
         w = update_rule(w, data, label)
         op_time = (time.time() - op_time)*SCALE_TIME
         new_objective = calc_objective(w, data, label)
-        if (new_objective - OPTIMAL < OPTIMAL):
+        if (new_objective - OPTIMAL < EPSILON):
         #if (objective - new_objective < EPSILON):
             print("breaking in ucb ", j)
             break
