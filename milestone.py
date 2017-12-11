@@ -10,7 +10,7 @@ import pylab
 from numpy.random import choice
 
 OPTIMAL = 38.4854465414
-EPSILON = 1e-4
+EPSILON = 1e-1
 BETA = 0.9
 GAMMA = 0.5
 SCALE_TIME = 200 #120
@@ -18,10 +18,11 @@ reduced_dim = 100
 data_squared = None
 
 class Results(object):
-    def __init__(self, objective, time):
+    def __init__(self, objective, time, store_time):
         self.objective = objective
         self.time = time
         self.iter = len(objective)
+        self.store_time = store_time
 
 
 ## this function runs coordinate, gradient, and multi-armed bandit on coordinate, gradient, 
@@ -69,10 +70,10 @@ def main():
     #print(coord_results.objective[-1])
    
     #pylab.plot(UCB_results.objective, '--k', label='MAB combined')
-    pylab.plot(EXP3_results.objective, '--k', label='MAB combined')
-    pylab.plot(grad_results.objective, '-b', label = 'Gradient Descent')
-    pylab.plot(coord_results.objective,'-g', label = 'Coordinate Descent')
-    pylab.plot(newton_results.objective, '-r', label = 'Newton Method')
+    pylab.plot(EXP3_results.store_time, EXP3_results.objective, '--k', label='MAB combined')
+    pylab.plot(grad_results.store_time, grad_results.objective, '-b', label = 'Gradient Descent')
+    pylab.plot(coord_results.store_time, coord_results.objective,'-g', label = 'Coordinate Descent')
+    pylab.plot(newton_results.store_time, newton_results.objective, '-r', label = 'Newton Method')
     pylab.title('Objective values')
     pylab.xlabel('Time Step')
     pylab.ylabel('Squared Error Loss')
@@ -100,7 +101,7 @@ def processData():
     # global data_squared
     # first, parse the data
     # /home/oyku/Desktop/Oyku/Convex 10-725/
-    mnist = pd.read_csv('/Users/alyazeed/Desktop/Convex/Convex-Optimization---multi-armed-bandit/train_mnist.csv')
+    mnist = pd.read_csv('~/Desktop/Oyku/Convex 10-725/repo/Convex-Optimization---multi-armed-bandit/train_mnist.csv')
 
     mnist = pd.DataFrame.as_matrix(mnist)
 
@@ -232,14 +233,16 @@ def algo(W, data, label, update_rule):
         objectives += [objective]
     cur_time = (time.time() - cur_time)
 
-    return Results(objectives, cur_time)
+    store_time = np.arange(len(objectives))*cur_time/(1.0*len(objectives))
+
+    return Results(objectives, cur_time, store_time)
 
 
 def UCB1(W, data, label, update_rules):
     w = W[:,:]
 
     objectives = []
-
+    store_time = [0.0]
     cur_time = time.time()
     objective = calc_objective(w, data, label)
     LARGE = objective
@@ -257,6 +260,7 @@ def UCB1(W, data, label, update_rules):
         op_time = time.time()
         w = update_rule(w, data, label)
         op_time = (time.time() - op_time)*SCALE_TIME
+        store_time = [store_time[-1] + op_time/SCALE_TIME]
         k += 1
         chosen_arm += [i]
         new_objective = calc_objective(w, data, label)
@@ -296,13 +300,13 @@ def UCB1(W, data, label, update_rules):
         UCB[j] = Rewards[j] + np.sqrt(2*np.log(k)/N[j])
     cur_time = time.time() - cur_time
 
-    return Results(objectives, cur_time)
+    return Results(objectives, cur_time, store_time[1::])
 
 def EXP3(W, data, label, update_rules):
     w = W[:,:]
 
     objectives = []
-
+    store_time = [0]
     cur_time = time.time()
     objective = calc_objective(w, data, label)
     LARGE = objective
@@ -326,6 +330,7 @@ def EXP3(W, data, label, update_rules):
         op_time = time.time()
         w = update_rule(w, data, label)
         op_time = (time.time() - op_time)*SCALE_TIME
+        store_time += [store_time[-1] + op_time/SCALE_TIME]
         new_objective = calc_objective(w, data, label)
         if (new_objective - OPTIMAL < EPSILON):
         #if (objective - new_objective < EPSILON):
@@ -339,7 +344,7 @@ def EXP3(W, data, label, update_rules):
 
     cur_time = time.time() - cur_time
 
-    return Results(objectives, cur_time)
+    return Results(objectives, cur_time, store_time[1::])
 
 
 main()
