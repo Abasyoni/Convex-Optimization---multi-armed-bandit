@@ -7,10 +7,12 @@ from sklearn.utils import shuffle
 import numpy.linalg
 from numpy.linalg import inv
 import pylab
+from numpy.random import choice
 
 OPTIMAL = 38.4854465414
-EPSILON = 1e-3
+EPSILON = 1e-4
 BETA = 0.9
+GAMMA = 0.5
 SCALE_TIME = 200 #120
 reduced_dim = 100
 data_squared = None
@@ -44,7 +46,15 @@ def main():
     init_w_cd = init_w * np.ones_like(init_w)
     init_w_ucb1 = init_w * np.ones_like(init_w)
     # Call individual descent algo - make a note of the obj func, accuracy, time taken
-    
+  
+    #print('MAB with UCB:')
+    #UCB_results = UCB1(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step])
+    #print(UCB_results.time)
+    print('MAB with EXP3:')
+    EXP3_results = EXP3(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step])
+    print(EXP3_results.time)
+    #print (UCB_results.objective)
+
     print('Gradient Descent:')
     grad_results = algo(init_w_gd, data, label, grad_step)
     print(grad_results.time)
@@ -52,20 +62,14 @@ def main():
     print('Newton Method:')
     newton_results = algo(init_w_n, data, label, newton_step)
     print(newton_results.time)
-    print (newton_results.objective[-1])
-    
     print('Coordinate Descent:')
     coord_results = algo(init_w_cd, data, label, coord_grad_step)
-    print(coord_results.time)
-    print(coord_results.objective[-1])
-    
-    print('MAB with UCB:')
-    UCB_results = UCB1(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step])
-    print(UCB_results.time)
-    #print (UCB_results.objective)
-    
-    
-    pylab.plot(UCB_results.objective, '--k', label='MAB combined')
+    print("coord is done")
+    #print(coord_results.time)
+    #print(coord_results.objective[-1])
+   
+    #pylab.plot(UCB_results.objective, '--k', label='MAB combined')
+    pylab.plot(EXP3_results.objective, '--k', label='MAB combined')
     pylab.plot(grad_results.objective, '-b', label = 'Gradient Descent')
     pylab.plot(coord_results.objective,'-g', label = 'Coordinate Descent')
     pylab.plot(newton_results.objective, '-r', label = 'Newton Method')
@@ -90,14 +94,13 @@ def main():
     plt.show()
     # Implement UCB2 for MAB 
 
-
     # Report Algo used/epoch, net time taken, obj value achieved, net accuracy
 
 def processData():
     # global data_squared
     # first, parse the data
     # /home/oyku/Desktop/Oyku/Convex 10-725/
-    mnist = pd.read_csv('/home/oyku/Desktop/Oyku/Convex 10-725/train_mnist.csv')
+    mnist = pd.read_csv('/Users/alyazeed/Desktop/Convex/Convex-Optimization---multi-armed-bandit/train_mnist.csv')
 
     mnist = pd.DataFrame.as_matrix(mnist)
 
@@ -222,13 +225,12 @@ def algo(W, data, label, update_rule):
     while (True):
         w = update_rule(w, data, label)
         new_objective = calc_objective(w, data, label)
-        #if (objective-new_objective < EPSILON):
-        if (new_objective - OPTIMAL < EPSILON):
+        if (objective-new_objective < EPSILON):
             print("breaking")
             break
         objective = new_objective
         objectives += [objective]
-    cur_time = (time.time() - cur_time)*SCALE_TIME
+    cur_time = (time.time() - cur_time)
 
     return Results(objectives, cur_time)
 
@@ -279,7 +281,7 @@ def UCB1(W, data, label, update_rules):
         w = update_rule(w, data, label)
         op_time = (time.time() - op_time)*SCALE_TIME
         new_objective = calc_objective(w, data, label)
-        if (new_objective - OPTIMAL < OPTIMAL):
+        if (new_objective - OPTIMAL < EPSILON):
         #if (objective - new_objective < EPSILON):
             print("breaking in ucb ", j)
             break
@@ -292,6 +294,49 @@ def UCB1(W, data, label, update_rules):
         Rewards[j] = (Rewards[j]*(N[j]-1) + reward)/N[j]
         #UCB = [Rewards[j] + np.sqrt(2*np.log(k/N[j])) for j in range(len(update_rules))]  
         UCB[j] = Rewards[j] + np.sqrt(2*np.log(k)/N[j])
+    cur_time = time.time() - cur_time
+
+    return Results(objectives, cur_time)
+
+def EXP3(W, data, label, update_rules):
+    w = W[:,:]
+
+    objectives = []
+
+    cur_time = time.time()
+    objective = calc_objective(w, data, label)
+    LARGE = objective
+
+    W = [1.0 for i in xrange(len(update_rules))]
+    P = [1.0/len(update_rules) for i in xrange(len(update_rules))]
+
+    objectives += [objective]
+    # first, run every algorithm once
+    global chosen_arm
+    chosen_arm = []
+
+    k = 1
+    while (True):
+        for i in xrange(len(P)):
+            P[i] = (1-GAMMA)*W[i]/sum(W) + GAMMA/len(update_rules)
+
+        rule_index = choice(range(len(update_rules)), p=P)
+        update_rule = update_rules[rule_index]
+        chosen_arm += [rule_index]
+        op_time = time.time()
+        w = update_rule(w, data, label)
+        op_time = (time.time() - op_time)*SCALE_TIME
+        new_objective = calc_objective(w, data, label)
+        if (new_objective - OPTIMAL < EPSILON):
+        #if (objective - new_objective < EPSILON):
+            break
+        reward = (((objective-new_objective)/(1.0*LARGE))**(1.0/k))/P[rule_index]
+        objective = new_objective
+        objectives += [objective]
+        reward = reward/(1.0*op_time)
+        k += 1
+        W[rule_index] = W[rule_index]*np.exp(GAMMA*reward/len(update_rules))
+
     cur_time = time.time() - cur_time
 
     return Results(objectives, cur_time)
