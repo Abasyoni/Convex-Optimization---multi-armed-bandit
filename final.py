@@ -6,18 +6,24 @@ import matplotlib.pyplot as plt
 from sklearn.utils import shuffle
 import numpy.linalg
 from numpy.linalg import inv
+import pylab
+from numpy.random import choice
 
-
-EPSILON = 0.1
-BETA = 0.9
+OPTIMAL = 0.375
+# 0.346718158291
+EPSILON = 1e-4
+BETA = 0.5
+GAMMA = 0.5
+SCALE_TIME = 200 #120
 reduced_dim = 100
 data_squared = None
 
 class Results(object):
-    def __init__(self, objective, time):
+    def __init__(self, objective, time, store_time):
         self.objective = objective
         self.time = time
         self.iter = len(objective)
+        self.store_time = store_time
 
 
 ## this function runs coordinate, gradient, and multi-armed bandit on coordinate, gradient, 
@@ -32,41 +38,80 @@ def main():
 
 
     #initialize weights
-    init_w = np.random.rand(1,Features)*1e-3
+    init_w = np.random.rand(1,Features)*1e-5
     temp_init_w = np.ones_like(init_w, dtype = np.float64)
     init_w = init_w*temp_init_w
+    
 
+    init_w_gd = init_w * np.ones_like(init_w)
+    init_w_n = init_w * np.ones_like(init_w)
+    init_w_cd = init_w * np.ones_like(init_w)
+    init_w_ucb1 = init_w * np.ones_like(init_w)
     # Call individual descent algo - make a note of the obj func, accuracy, time taken
-    grad_results = algo(init_w, data, label, grad_step)
-    coord_results = algo(init_w, data, label, coord_grad_step)
-    newton_results = algo(init_w, data, label, newton_step)
-    UCB_results = UCB1(init_w, data, label, [grad_step, coord_grad_step, newton_step])
-
-    print UCB_results.objective
-    plt.plot(UCB_results.objective, 'r',grad_results.objective, 'b',coord_results.objective,'g', newton_results.objective, 'm')
-    plt.title('Objective values')
-    #plt.plot(newton_results.objective)
-    #plt.plot([1,2,3,4,5,6])
-    #print("hi")
-    #print(grad_results.objective)
+        #print('MAB with UCB:')
+    #UCB_results = UCB1(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step])
+    #print(UCB_results.time)
+    
+    print('MAB with EXP3:')
+    EXP3_results = EXP3(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step])
+    print(EXP3_results.time)
+    #print (UCB_results.objective)
+        
+    
+    print('Gradient Descent:')
+    grad_results = algo(init_w_gd, data, label, grad_step)
+    print(grad_results.time)
+    
+    
+    print('Newton Method:')
+    newton_results = algo(init_w_n, data, label, newton_step)
+    print(newton_results.time)
+    
+    
+    print('Coordinate Descent:')
+    coord_results = algo(init_w_cd, data, label, coord_grad_step)
+    print(coord_results.time)
+    
+    #print(coord_results.objective[-1])
+       
+    #pylab.plot(UCB_results.objective, '--k', label='MAB combined')
+    pylab.plot(EXP3_results.store_time, EXP3_results.objective, '--k', label='MAB combined')
+    pylab.plot(grad_results.store_time, grad_results.objective, '-b', label = 'Gradient Descent')
+    pylab.plot(coord_results.store_time, coord_results.objective,'-g', label = 'Coordinate Descent')
+    pylab.plot(newton_results.store_time, newton_results.objective, '-r', label = 'Newton Method')
+    pylab.title('Objective values')
+    pylab.xlabel('Time Step')
+    pylab.ylabel('Squared Error Loss')
+    pylab.legend()
     plt.show()
+    
+    print "gd: ",np.sum((np.asarray(chosen_arm) == 0) + 0)
+    print "cd: ",np.sum((np.asarray(chosen_arm) == 1) + 0)
+    print "nm: ",np.sum((np.asarray(chosen_arm) == 2) + 0)
 
-
-
+    nn = np.arange(np.asarray(chosen_arm).shape[0])
+    pylab.scatter(nn,chosen_arm)
+    yy = np.array([0,1,2])
+    my_yticks = ['Gradient Descent', 'Coordinate Descent', 'Newton Method']
+    plt.yticks(yy, my_yticks)
+    pylab.xlabel('Time Step')
+    pylab.ylabel('Chosen Arm')
+    pylab.title('The Descent Algorithm Chosen for Each Time Step')
+    plt.show()
+    
     # Implement UCB2 for MAB 
-
 
     # Report Algo used/epoch, net time taken, obj value achieved, net accuracy
 
 def processData():
-    global data_squared
+    # global data_squared
     # first, parse the data
     # /home/oyku/Desktop/Oyku/Convex 10-725/
-    mnist = pd.read_csv('train_mnist.csv')
+    mnist = pd.read_csv('/Users/alyazeed/Desktop/Convex/Convex-Optimization---multi-armed-bandit/train_mnist.csv')
 
     mnist = pd.DataFrame.as_matrix(mnist)
 
-    mnist_shuffled = shuffle(mnist)
+    # mnist_shuffled = shuffle(mnist)
 
     label = mnist[:,0]
     data = mnist[:,1::]
@@ -92,59 +137,89 @@ def processData():
     data = np.append(data, np.ones([data.shape[0],1]), axis = 1)
 
 
-    data_squared = np.sum(data**2, axis = 0)
+    # data_squared = np.sum(data**2, axis = 0)
     
     return (data, label)
 
+#def calc_objective(w, data, label):
+#    result = (label.T - w.dot(data.T))
+#    result = 0.5*result.dot(result.T)
+#    return result[0,0]
+
+def sigmoid(x):
+    return 1.0/(1.0+np.exp(-x))
+
 def calc_objective(w, data, label):
-    result = (label.T - w.dot(data.T))
-    result = 0.5*result.dot(result.T)
-    return result[0,0]
+    w_dot_x = w.dot(data.T)
+    #print ('dot ', w_dot_x)
+    vfunc = np.vectorize(sigmoid)
+    y_hat = vfunc(w_dot_x)
+    L = -label.T*(np.log(y_hat)) - (1-label.T)*(np.log(1.0-y_hat))
+    #print('y hat, ', y_hat)
+    #print('obj ', (1.0*np.sum(L))/(L.shape[0]))
+    return (1.0*np.sum(L))/(L.shape[0])
+
+
+#def calc_grad(w, data, label):
+#    return -(label.T - w.dot(data.T)).dot(data)
 
 def calc_grad(w, data, label):
-    return -(label.T - w.dot(data.T)).dot(data)
+    w_dot_x = w.dot(data.T)
+    vfunc = np.vectorize(sigmoid)
+    y_hat = vfunc(w_dot_x)
+    #print ()
+    N = label.shape[0]
+    return (((1.0-label.T)*y_hat - label.T*(1.0-y_hat)).dot(data))/N
+
 
 def grad_step(w, data, label):
+    global BETA
     step = 1
     current_objective = calc_objective(w, data, label)
     current_grad = calc_grad(w, data, label)
     quadratic_reduction = current_grad.dot(current_grad.T)/2
     while (True):
         temp_w = w - step*calc_grad(w, data, label)
-        if (calc_objective(temp_w, data, label) < current_objective - quadratic_reduction*step):
+        if (calc_objective(temp_w, data, label) <= current_objective - quadratic_reduction*step + EPSILON/10):
             break
         step = step*BETA
 
     return w - step*calc_grad(w, data, label)
 
 def calc_grad_i(w, data, label, i):
-    return -(label.T - w.dot(data.T)).dot(data[:,i])[0]
+    w_dot_x = w.dot(data.T)
+    vfunc = np.vectorize(sigmoid)
+    y_hat = vfunc(w_dot_x)
+    #print ()
+    N = label.shape[0]
+    return (((1.0-label.T)*y_hat - label.T*(1.0-y_hat)).dot(data.T[i]))/N
 
+'''
 def update_w_i(W, data, label, i):
     w = W[:,:]
-    step = 1e-10
+    step = 1e-12
     current_objective = calc_objective(w, data, label)
     current_grad = calc_grad_i(w, data, label, i)
     return w[:,i] - step*calc_grad_i(w, data, label, i)
 
-"""
+'''
+
 def update_w_i(W, data, label, i):
     global BETA
     w = W[:,:]
-    step = 1
+    step = 2
     current_objective = calc_objective(w, data, label)
     current_grad = calc_grad_i(w, data, label, i)
-    quadratic_reduction = current_grad*(current_grad)/2
+    quadratic_reduction = current_grad*(current_grad)/4
     temp_w = np.ones_like(w)*w
     while (True):
         temp_w[:,i] = w[:,i] - step*current_grad
         new_objective = calc_objective(temp_w, data, label)
-        if (new_objective < current_objective - quadratic_reduction*step):
+        if (new_objective <= current_objective - quadratic_reduction*step + EPSILON/10):
             break
         step = step*BETA
-
     return w[:,i] - step*calc_grad_i(w, data, label, i)
-"""
+
 
 """
 def update_w_i(W, Data, label, i):
@@ -161,19 +236,36 @@ def update_w_i(W, Data, label, i):
 
 def coord_grad_step(W, data, label):
     w = W[:,:]
-    for i in xrange(w.shape[1]):
+    for i in range(w.shape[1]):
         w[:,i] = update_w_i(w, data, label, i)
     return w
 
-def inv_newt_hess(data):
-    return inv(data.T.dot(data))
+def inv_newt_hess(w, data):
+    w_dot_x = w.dot(data.T)
+    vfunc = np.vectorize(sigmoid)
+    y_hat = vfunc(w_dot_x)
+    d = y_hat*(1.0-y_hat)
+    D = np.diag(d.reshape(d.shape[1]))
+    N = data.shape[0]
+    return inv((data.T.dot(D)).dot(data))*N
 
 def newton_step(W, data, label):
+    global BETA
     w = W[:,:]
-    l = 0.1
-    step = inv_newt_hess(data)
+    current_objective = calc_objective(w, data, label)
+    l = 100000.0
+    step = inv_newt_hess(w, data)
     grad = calc_grad(w, data, label)
-    return w - l*grad.dot(step)
+    v = -grad.dot(step)
+    ALPHA = 0.5
+    quadratic_reduction = grad.dot(v.T)
+    while (True):
+        temp_w = w + l*v
+        if (calc_objective(temp_w, data, label) <= current_objective + ALPHA*l*quadratic_reduction + EPSILON/10):
+            break
+        l = l*BETA
+
+    return w + l*v
 
 def algo(W, data, label, update_rule):
     w = W[:,:]
@@ -182,78 +274,66 @@ def algo(W, data, label, update_rule):
 
     cur_time = time.time()
     objective = calc_objective(w, data, label)
-
     objectives += [objective]
     while (True):
         w = update_rule(w, data, label)
         new_objective = calc_objective(w, data, label)
-        if (objective-new_objective < EPSILON):
-            print("brekaing")
+        print new_objective
+        if (new_objective-OPTIMAL < EPSILON):
+            print("breaking")
             break
         objective = new_objective
         objectives += [objective]
-    cur_time = time.time() - cur_time
+    cur_time = (time.time() - cur_time)
 
-    return Results(objectives, cur_time)
+    store_time = np.arange(len(objectives))*cur_time/(1.0*len(objectives))
+
+    return Results(objectives, cur_time, store_time)
 
 
-def UCB1(W, data, label, update_rules):
+def EXP3(W, data, label, update_rules):
     w = W[:,:]
 
     objectives = []
-
+    store_time = [0.0]
     cur_time = time.time()
     objective = calc_objective(w, data, label)
     LARGE = objective
 
-    N = [0 for i in xrange(len(update_rules))]
-    Rewards = [0 for i in xrange(len(update_rules))]
+    W = [1.0 for i in xrange(len(update_rules))]
+    P = [1.0/len(update_rules) for i in xrange(len(update_rules))]
 
     objectives += [objective]
     # first, run every algorithm once
-    k = 0
-    i = 0
-    for update_rule in update_rules:
-        op_time = time.time()
-        w = update_rule(w, data, label)
-        op_time = (time.time() - op_time)*10000
-        k += 1
-        new_objective = calc_objective(w, data, label)
-        objective = new_objective
-        objectives += [objective]
-        reward = ((objective-new_objective)/(1.0*LARGE))**(1.0/k)
-        reward = reward/(1.0*op_time)
-        N[i] += 1
-        Rewards[i] = (Rewards[i]*(N[i]-1) + reward)/N[i]
-        i += 1
+    global chosen_arm
     chosen_arm = []
+
+    k = 1
     while (True):
-        UCB = [Rewards[j] + np.sqrt(np.log(2*k/N[j])) for j in xrange(len(update_rules))]
-        j = np.argmax(UCB)
-        #print j
-        chosen_arm += [j]
+        for i in xrange(len(P)):
+            P[i] = (1-GAMMA)*W[i]/sum(W) + GAMMA/len(update_rules)
+
+        rule_index = choice(range(len(update_rules)), p=P)
+        update_rule = update_rules[rule_index]
+        chosen_arm += [rule_index]
         op_time = time.time()
-        update_rule = update_rules[j]
         w = update_rule(w, data, label)
-        op_time = (time.time() - op_time)*10
+        op_time = (time.time() - op_time)*SCALE_TIME
+        store_time += [store_time[-1] + op_time/SCALE_TIME]
         new_objective = calc_objective(w, data, label)
-        if (objective - new_objective < EPSILON):
-            print("brekaing")
-            #plt.plot(chosen_arm)
-            #plt.show()
-            break
-        reward = ((objective-new_objective)/(1.0*LARGE))**(1.0/k)
+        #if (new_objective - objective < EPSILON):
+        reward = (((objective-new_objective)/(1.0*LARGE))**(1.0/k))/P[rule_index]
         objective = new_objective
         objectives += [objective]
+        if (new_objective - OPTIMAL < EPSILON):
+            break
         reward = reward/(1.0*op_time)
         k += 1
-        N[j] += 1
-        Rewards[j] = (Rewards[j]*(N[j]-1) + reward)/N[j]    
+        W[rule_index] = W[rule_index]*np.exp(GAMMA*reward/len(update_rules))
 
     cur_time = time.time() - cur_time
 
-    return Results(objectives, cur_time)
+    return Results(objectives, cur_time, store_time)
 
 
 main()
-
