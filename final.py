@@ -228,7 +228,7 @@ def newton_step(W, data, label):
     quadratic_reduction = grad.dot(v.T)/4.0
     while (True):
         temp_w = w + l*v
-        if (calc_objective(temp_w, data, label) <= current_objective + l*quadratic_reduction + EPSILON/10):
+        if (calc_objective(temp_w, data, label) <= current_objective + l*quadratic_reduction):
             break
         l = l*BETA
 
