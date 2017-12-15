@@ -9,10 +9,10 @@ from numpy.linalg import inv
 import pylab
 from numpy.random import choice
 
-OPTIMAL = 0.375
-# 0.346718158291
-EPSILON = 1e-4
-BETA = 0.5
+OPTIMAL = 0.0
+
+EPSILON = 1e-5
+BETA = 0.9
 GAMMA = 0.5
 SCALE_TIME = 200 #120
 reduced_dim = 100
@@ -51,27 +51,25 @@ def main():
         #print('MAB with UCB:')
     #UCB_results = UCB1(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step])
     #print(UCB_results.time)
-    
+    '''
     print('MAB with EXP3:')
     EXP3_results = EXP3(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step])
     print(EXP3_results.time)
     #print (UCB_results.objective)
-        
-    
+    '''
     print('Gradient Descent:')
     grad_results = algo(init_w_gd, data, label, grad_step)
     print(grad_results.time)
-    
-    
+
     print('Newton Method:')
     newton_results = algo(init_w_n, data, label, newton_step)
     print(newton_results.time)
     
-    
     print('Coordinate Descent:')
     coord_results = algo(init_w_cd, data, label, coord_grad_step)
     print(coord_results.time)
-    
+    '''
+
     #print(coord_results.objective[-1])
        
     #pylab.plot(UCB_results.objective, '--k', label='MAB combined')
@@ -98,7 +96,7 @@ def main():
     pylab.ylabel('Chosen Arm')
     pylab.title('The Descent Algorithm Chosen for Each Time Step')
     plt.show()
-    
+    '''
     # Implement UCB2 for MAB 
 
     # Report Algo used/epoch, net time taken, obj value achieved, net accuracy
@@ -157,7 +155,7 @@ def calc_objective(w, data, label):
     L = -label.T*(np.log(y_hat)) - (1-label.T)*(np.log(1.0-y_hat))
     #print('y hat, ', y_hat)
     #print('obj ', (1.0*np.sum(L))/(L.shape[0]))
-    return (1.0*np.sum(L))/(L.shape[0])
+    return (1.0*np.sum(L))
 
 
 #def calc_grad(w, data, label):
@@ -168,77 +166,15 @@ def calc_grad(w, data, label):
     vfunc = np.vectorize(sigmoid)
     y_hat = vfunc(w_dot_x)
     #print ()
-    N = label.shape[0]
-    return (((1.0-label.T)*y_hat - label.T*(1.0-y_hat)).dot(data))/N
+    return (((1.0-label.T)*y_hat - label.T*(1.0-y_hat)).dot(data))
 
-
-def grad_step(w, data, label):
-    global BETA
-    step = 1
-    current_objective = calc_objective(w, data, label)
-    current_grad = calc_grad(w, data, label)
-    quadratic_reduction = current_grad.dot(current_grad.T)/2
-    while (True):
-        temp_w = w - step*calc_grad(w, data, label)
-        if (calc_objective(temp_w, data, label) <= current_objective - quadratic_reduction*step + EPSILON/10):
-            break
-        step = step*BETA
-
-    return w - step*calc_grad(w, data, label)
 
 def calc_grad_i(w, data, label, i):
     w_dot_x = w.dot(data.T)
     vfunc = np.vectorize(sigmoid)
     y_hat = vfunc(w_dot_x)
     #print ()
-    N = label.shape[0]
-    return (((1.0-label.T)*y_hat - label.T*(1.0-y_hat)).dot(data.T[i]))/N
-
-'''
-def update_w_i(W, data, label, i):
-    w = W[:,:]
-    step = 1e-12
-    current_objective = calc_objective(w, data, label)
-    current_grad = calc_grad_i(w, data, label, i)
-    return w[:,i] - step*calc_grad_i(w, data, label, i)
-
-'''
-
-def update_w_i(W, data, label, i):
-    global BETA
-    w = W[:,:]
-    step = 2
-    current_objective = calc_objective(w, data, label)
-    current_grad = calc_grad_i(w, data, label, i)
-    quadratic_reduction = current_grad*(current_grad)/4
-    temp_w = np.ones_like(w)*w
-    while (True):
-        temp_w[:,i] = w[:,i] - step*current_grad
-        new_objective = calc_objective(temp_w, data, label)
-        if (new_objective <= current_objective - quadratic_reduction*step + EPSILON/10):
-            break
-        step = step*BETA
-    return w[:,i] - step*calc_grad_i(w, data, label, i)
-
-
-"""
-def update_w_i(W, Data, label, i):
-    global data_squared
-    mask = np.ones(W.shape[1], dtype = bool)
-    mask[i] = False
-    w = W[:,:]
-    w_j = w[:,mask]
-    data = Data[:,:]
-    data_j = data[:,mask]
-    temp = ((label.T - w_j.dot(data_j.T)).dot(data[:,i]))
-    return temp[0]/(data_squared[i])
-"""
-
-def coord_grad_step(W, data, label):
-    w = W[:,:]
-    for i in range(w.shape[1]):
-        w[:,i] = update_w_i(w, data, label, i)
-    return w
+    return (((1.0-label.T)*y_hat - label.T*(1.0-y_hat)).dot(data.T[i]))
 
 def inv_newt_hess(w, data):
     w_dot_x = w.dot(data.T)
@@ -246,26 +182,65 @@ def inv_newt_hess(w, data):
     y_hat = vfunc(w_dot_x)
     d = y_hat*(1.0-y_hat)
     D = np.diag(d.reshape(d.shape[1]))
-    N = data.shape[0]
-    return inv((data.T.dot(D)).dot(data))*N
+    return inv((data.T.dot(D)).dot(data))
+
+def update_w_i(W, data, label, i):
+    global BETA
+    step = 100000.0
+    w = np.ones_like(W)*W
+    current_objective = calc_objective(w, data, label)
+    current_grad = calc_grad_i(w, data, label, i)
+    quadratic_reduction = -current_grad*(current_grad)/4.0
+    temp_w = np.ones_like(w)*w
+    while (True):
+        temp_w[:,i] = w[:,i] - step*current_grad
+        new_objective = calc_objective(temp_w, data, label)
+        if (new_objective <= current_objective + quadratic_reduction*step):
+            break
+        step = step*BETA
+    return w[:,i] - step*calc_grad_i(w, data, label, i)
+
+
+def grad_step(W, data, label):    
+    global BETA
+    step = 100000.0
+    w = np.ones_like(W)*W
+    current_objective = calc_objective(w, data, label)
+    current_grad = calc_grad(w, data, label)
+    quadratic_reduction = -current_grad.dot(current_grad.T)/4.0
+    temp_w = np.ones_like(w)*w
+    while (True):
+        temp_w = w - step*current_grad
+        new_objective = calc_objective(temp_w, data, label)
+        if (new_objective <= current_objective + quadratic_reduction*step):
+            break
+        step = step*BETA
+    return w - step*current_grad
 
 def newton_step(W, data, label):
     global BETA
-    w = W[:,:]
+    w = np.ones_like(W)*W
     current_objective = calc_objective(w, data, label)
     l = 100000.0
     step = inv_newt_hess(w, data)
     grad = calc_grad(w, data, label)
     v = -grad.dot(step)
-    ALPHA = 0.5
-    quadratic_reduction = grad.dot(v.T)
+    quadratic_reduction = grad.dot(v.T)/4.0
     while (True):
         temp_w = w + l*v
-        if (calc_objective(temp_w, data, label) <= current_objective + ALPHA*l*quadratic_reduction + EPSILON/10):
+        if (calc_objective(temp_w, data, label) <= current_objective + l*quadratic_reduction + EPSILON/10):
             break
         l = l*BETA
 
     return w + l*v
+
+
+def coord_grad_step(W, data, label):
+    w = np.ones_like(W)*W
+    for i in range(w.shape[1]):
+        w[:,i] = update_w_i(w, data, label, i)
+    return w
+
 
 def algo(W, data, label, update_rule):
     w = W[:,:]
@@ -279,7 +254,7 @@ def algo(W, data, label, update_rule):
         w = update_rule(w, data, label)
         new_objective = calc_objective(w, data, label)
         print new_objective
-        if (new_objective-OPTIMAL < EPSILON):
+        if (objective - new_objective < EPSILON):
             print("breaking")
             break
         objective = new_objective
