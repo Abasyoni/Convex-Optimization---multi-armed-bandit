@@ -11,7 +11,7 @@ from numpy.random import choice
 
 OPTIMAL = 0.0
 
-EPSILON = 1e-5
+EPSILON = 1e-7
 BETA = 0.9
 GAMMA = 0.5
 SCALE_TIME = 200 #120
@@ -60,7 +60,7 @@ def main():
     print('Gradient Descent:')
     grad_results = algo(init_w_gd, data, label, grad_step)
     print(grad_results.time)
-
+    '''
     print('Newton Method:')
     newton_results = algo(init_w_n, data, label, newton_step)
     print(newton_results.time)
@@ -68,7 +68,7 @@ def main():
     print('Coordinate Descent:')
     coord_results = algo(init_w_cd, data, label, coord_grad_step)
     print(coord_results.time)
-    '''
+    
 
     #print(coord_results.objective[-1])
        
@@ -151,11 +151,14 @@ def calc_objective(w, data, label):
     w_dot_x = w.dot(data.T)
     #print ('dot ', w_dot_x)
     vfunc = np.vectorize(sigmoid)
-    y_hat = vfunc(w_dot_x)
-    L = -label.T*(np.log(y_hat)) - (1-label.T)*(np.log(1.0-y_hat))
+    y_hat = vfunc(w_dot_x).T
+
+    L0 = np.log(1.0-y_hat[label < 0.5])
+    L1 = np.log(y_hat[label >= 0.5])
+    #L = -label.T*(np.log(y_hat)) - (1-label.T)*(np.log(1.0-y_hat))
     #print('y hat, ', y_hat)
     #print('obj ', (1.0*np.sum(L))/(L.shape[0]))
-    return (1.0*np.sum(L))
+    return (-1.0*np.sum(L0) - 1.0*np.sum(L1))
 
 
 #def calc_grad(w, data, label):
@@ -165,9 +168,12 @@ def calc_grad(w, data, label):
     w_dot_x = w.dot(data.T)
     vfunc = np.vectorize(sigmoid)
     y_hat = vfunc(w_dot_x)
+    #L = np.zeros_like(label)
+    #L[label==0] = y_hat[label <= 0.5]
+    #L[label==1] = y_hat[label > 0.5]-1.0
     #print ()
+    #return ((L.T).dot(data))
     return (((1.0-label.T)*y_hat - label.T*(1.0-y_hat)).dot(data))
-
 
 def calc_grad_i(w, data, label, i):
     w_dot_x = w.dot(data.T)
@@ -186,7 +192,7 @@ def inv_newt_hess(w, data):
 
 def update_w_i(W, data, label, i):
     global BETA
-    step = 100000.0
+    step = 10.0
     w = np.ones_like(W)*W
     current_objective = calc_objective(w, data, label)
     current_grad = calc_grad_i(w, data, label, i)
@@ -203,7 +209,7 @@ def update_w_i(W, data, label, i):
 
 def grad_step(W, data, label):    
     global BETA
-    step = 100000.0
+    step = 10.0
     w = np.ones_like(W)*W
     current_objective = calc_objective(w, data, label)
     current_grad = calc_grad(w, data, label)
@@ -221,7 +227,7 @@ def newton_step(W, data, label):
     global BETA
     w = np.ones_like(W)*W
     current_objective = calc_objective(w, data, label)
-    l = 100000.0
+    l = 10.0
     step = inv_newt_hess(w, data)
     grad = calc_grad(w, data, label)
     v = -grad.dot(step)
@@ -254,7 +260,7 @@ def algo(W, data, label, update_rule):
         w = update_rule(w, data, label)
         new_objective = calc_objective(w, data, label)
         print new_objective
-        if (objective - new_objective < EPSILON):
+        if (new_objective -OPTIMAL < 0.0):
             print("breaking")
             break
         objective = new_objective
