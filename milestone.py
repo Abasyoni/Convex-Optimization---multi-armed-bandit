@@ -10,7 +10,7 @@ import pylab
 from numpy.random import choice
 
 OPTIMAL = 38.5#38.4854465414
-EPSILON = 1e-2
+EPSILON = 1e-3
 BETA = 0.9
 GAMMA = 0.5
 SCALE_TIME = 200 #120
@@ -51,7 +51,7 @@ def main():
     # Call individual descent algo - make a note of the obj func, accuracy, time taken
     
     print('MAB with UCB1:')
-    UCB_results = UCB1(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step])#, batch_grad_step])
+    UCB_results = UCB1(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step, batch_grad_step])
     print(UCB_results.time)
     
     print('Batch Gradient Descent:')
@@ -94,9 +94,9 @@ def main():
     nn = np.arange(np.asarray(chosen_arm).shape[0])
     pylab.scatter(nn,chosen_arm)
     yy = np.array([0,1,2,3])
-    yy_ucb = np.array([0,1,2])
+    yy_ucb = np.array([0,1,2,3])
     my_yticks = ['Gradient Descent', 'Coordinate Descent', 'Newton Method', 'Mini-Batch']
-    my_yticks_ucb = ['Gradient Descent', 'Coordinate Descent', 'Newton Method']#, 'Mini-Batch']
+    my_yticks_ucb = ['Gradient Descent', 'Coordinate Descent', 'Newton Method', 'Mini-Batch']
     plt.yticks(yy_ucb, my_yticks_ucb)
     pylab.xlabel('Time Step')
     pylab.ylabel('Chosen Arm')
@@ -381,13 +381,13 @@ def EXP3(W, data, label, update_rules):
         store_time += [store_time[-1] + op_time/SCALE_TIME]
         new_objective = calc_objective(w, data, label)
         #OLD REWARD
-        reward = (((objective-new_objective)/(1.0*LARGE))**(1.0/k))/P[rule_index]
-        reward = reward/(1.0*op_time)
+        #reward = (((objective-new_objective)/(1.0*LARGE))**(1.0/k))/P[rule_index]
+        #reward = reward/(1.0*op_time)
 
         #NEW REWARD
-        #reward = ((objective-new_objective)/(1.0*LARGE) + 1)/2.0
-        #reward = reward/(1.0*op_time)
-        #reward = reward/(1.0*P[rule_index])
+        reward = ((objective-new_objective)/(1.0*LARGE) + 1)/2.0
+        reward = reward/(1.0*op_time)
+        reward = reward/(1.0*P[rule_index])
 
         objective = new_objective
         objectives += [objective]
