@@ -9,12 +9,12 @@ from numpy.linalg import inv
 import pylab
 from numpy.random import choice
 
-OPTIMAL = 38.4854465414
-EPSILON = 1e-4
+OPTIMAL = 38.5#38.4854465414
+EPSILON = 1e-2
 BETA = 0.9
 GAMMA = 0.5
 SCALE_TIME = 200 #120
-reduced_dim = 100
+reduced_dim = 500
 data_squared = None
 
 class Results(object):
@@ -46,22 +46,22 @@ def main():
     init_w_n = init_w * np.ones_like(init_w)
     init_w_cd = init_w * np.ones_like(init_w)
     init_w_ucb1 = init_w * np.ones_like(init_w)
+    init_w_exp3 = init_w * np.ones_like(init_w)
     init_w_b = init_w * np.ones_like(init_w)
     # Call individual descent algo - make a note of the obj func, accuracy, time taken
-  
-    print('MAB with UCB:')
-    UCB_results = UCB1(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step])
+    
+    print('MAB with UCB1:')
+    UCB_results = UCB1(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step])#, batch_grad_step])
     print(UCB_results.time)
-    """
+    
     print('Batch Gradient Descent:')
     batch_results = algo(init_w_b, data, label, batch_grad_step)
     print(batch_results.time)
-
+    
     print('MAB with EXP3:')
-    EXP3_results = EXP3(init_w_ucb1, data, label, [grad_step, coord_grad_step, newton_step, batch_grad_step])
+    EXP3_results = EXP3(init_w_exp3, data, label, [grad_step, coord_grad_step, newton_step, batch_grad_step])
     print(EXP3_results.time)
-    #print (UCB_results.objective)
-    """
+    
     print('Gradient Descent:')
     grad_results = algo(init_w_gd, data, label, grad_step)
     print(grad_results.time)
@@ -69,18 +69,17 @@ def main():
     print('Newton Method:')
     newton_results = algo(init_w_n, data, label, newton_step)
     print(newton_results.time)
+
     print('Coordinate Descent:')
     coord_results = algo(init_w_cd, data, label, coord_grad_step)
-    print("coord is done")
-    #print(coord_results.time)
-    #print(coord_results.objective[-1])
-   
-    pylab.plot(UCB_results.objective, '--k', label='MAB combined')
-    #pylab.plot(EXP3_results.store_time, EXP3_results.objective, '--k', label='MAB combined')
+    print(coord_results.time)
+    
+    pylab.plot(UCB_results.objective, '--c', label='MAB with UCB(1)')
+    pylab.plot(EXP3_results.store_time, EXP3_results.objective, '--k', label='MAB with EXP(3)')
     pylab.plot(grad_results.store_time, grad_results.objective, '-b', label = 'Gradient Descent')
     pylab.plot(coord_results.store_time, coord_results.objective,'-g', label = 'Coordinate Descent')
     pylab.plot(newton_results.store_time, newton_results.objective, '-r', label = 'Newton Method')
-    #pylab.plot(batch_results.store_time, batch_results.objective, '-m', label = 'Mini-batch Gradient Descent')
+    pylab.plot(batch_results.store_time, batch_results.objective, '-m', label = 'Mini-batch Gradient Descent')
     
     pylab.title('Objective values')
     pylab.xlabel('Time')
@@ -91,16 +90,29 @@ def main():
     print "gd: ",np.sum((np.asarray(chosen_arm) == 0) + 0)
     print "cd: ",np.sum((np.asarray(chosen_arm) == 1) + 0)
     print "nm: ",np.sum((np.asarray(chosen_arm) == 2) + 0)
-
+    
     nn = np.arange(np.asarray(chosen_arm).shape[0])
     pylab.scatter(nn,chosen_arm)
+    yy = np.array([0,1,2,3])
+    yy_ucb = np.array([0,1,2])
+    my_yticks = ['Gradient Descent', 'Coordinate Descent', 'Newton Method', 'Mini-Batch']
+    my_yticks_ucb = ['Gradient Descent', 'Coordinate Descent', 'Newton Method']#, 'Mini-Batch']
+    plt.yticks(yy_ucb, my_yticks_ucb)
+    pylab.xlabel('Time Step')
+    pylab.ylabel('Chosen Arm')
+    pylab.title('The Descent Algorithm Chosen for Each Time Step using EXP(3)')
+    plt.show()
+
+
+    nn_UCB = np.arange(np.asarray(chosen_arm_UCB).shape[0])
+    pylab.scatter(nn_UCB,chosen_arm_UCB)
     #yy = np.array([0,1,2,3])
-    yy = np.array([0,1,2])
-    my_yticks = ['Gradient Descent', 'Coordinate Descent', 'Newton Method']#, 'Mini-Batch']
+    #yy = np.array([0,1,2])
+    #my_yticks = ['Gradient Descent', 'Coordinate Descent', 'Newton Method', 'Mini-Batch']
     plt.yticks(yy, my_yticks)
     pylab.xlabel('Time Step')
     pylab.ylabel('Chosen Arm')
-    pylab.title('The Descent Algorithm Chosen for Each Time Step')
+    pylab.title('The Descent Algorithm Chosen for Each Time Step using UCB(1)')
     plt.show()
     # Implement UCB2 for MAB 
 
@@ -110,6 +122,7 @@ def processData():
     # global data_squared
     # first, parse the data
     # /home/oyku/Desktop/Oyku/Convex 10-725/
+    global reduced_dim
     mnist = pd.read_csv('~/Desktop/Oyku/Convex 10-725/repo/Convex-Optimization---multi-armed-bandit/train_mnist.csv')
 
     mnist = pd.DataFrame.as_matrix(mnist)
@@ -130,7 +143,7 @@ def processData():
 
     mean = np.mean(data)
     data = data - mean
-
+    
     cov = np.dot(data.T, data) / data.shape[0]
 
     U, S, V = np.linalg.svd(cov)
@@ -259,7 +272,7 @@ def algo(W, data, label, update_rule):
     while (True):
         w = update_rule(w, data, label)
         new_objective = calc_objective(w, data, label)
-        if (np.abs(objective-new_objective) < EPSILON):
+        if (new_objective - OPTIMAL < EPSILON):
             print("breaking")
             break
         objective = new_objective
@@ -287,15 +300,15 @@ def UCB1(W, data, label, update_rules):
     # first, run every algorithm once
     k = 0
     i = 0
-    global chosen_arm
-    chosen_arm = []
+    global chosen_arm_UCB
+    chosen_arm_UCB = []
     for update_rule in update_rules:
         op_time = time.time()
         w = update_rule(w, data, label)
         op_time = (time.time() - op_time)*SCALE_TIME
         store_time = [store_time[-1] + op_time/SCALE_TIME]
         k += 1
-        chosen_arm += [i]
+        chosen_arm_UCB += [i]
         new_objective = calc_objective(w, data, label)
         reward = ((objective-new_objective)/(1.0*LARGE))**(1.0/k)
         objective = new_objective
@@ -308,7 +321,7 @@ def UCB1(W, data, label, update_rules):
     
     while (True):
         j = np.argmax(np.asarray(UCB))
-        chosen_arm += [j]
+        chosen_arm_UCB += [j]
         op_time = time.time()
         update_rule = update_rules[j]
         w = update_rule(w, data, label)
@@ -318,10 +331,16 @@ def UCB1(W, data, label, update_rules):
         #if (objective - new_objective < EPSILON):
             print("breaking in ucb ", j)
             break
-        reward = ((objective-new_objective)/(1.0*LARGE))**(1.0/k)
         objective = new_objective
         objectives += [objective]
+        #OLD REWARD
+        reward = ((objective-new_objective)/(1.0*LARGE))**(1.0/k)
         reward = reward/(1.0*op_time)
+        
+        #NEW REWARD
+        #reward = ((objective-new_objective)/(1.0*LARGE) + 1)/2.0
+        #reward = reward/(1.0*op_time)
+
         k += 1
         N[j] += 1
         Rewards[j] = (Rewards[j]*(N[j]-1) + reward)/N[j]
@@ -361,13 +380,14 @@ def EXP3(W, data, label, update_rules):
         op_time = (time.time() - op_time)*SCALE_TIME
         store_time += [store_time[-1] + op_time/SCALE_TIME]
         new_objective = calc_objective(w, data, label)
-        #if (new_objective - objective < EPSILON):
-        #reward = (((objective-new_objective)/(1.0*LARGE))**(1.0/k))/P[rule_index]
-        #reward = reward/(1.0*op_time)
-
-        reward = ((objective-new_objective)/(1.0*LARGE) + 1)/2.0
+        #OLD REWARD
+        reward = (((objective-new_objective)/(1.0*LARGE))**(1.0/k))/P[rule_index]
         reward = reward/(1.0*op_time)
-        reward = reward/(1.0*P[rule_index])
+
+        #NEW REWARD
+        #reward = ((objective-new_objective)/(1.0*LARGE) + 1)/2.0
+        #reward = reward/(1.0*op_time)
+        #reward = reward/(1.0*P[rule_index])
 
         objective = new_objective
         objectives += [objective]
